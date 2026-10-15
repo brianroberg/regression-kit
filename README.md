@@ -38,23 +38,21 @@ except your own `live_app_config` fixture.
 
 ```python
 # tests/conftest.py
-import tempfile
-from pathlib import Path
-
 import pytest
 from regression_kit import LiveAppConfig
 
 from tests.seed import seed_database  # your project's seed function
 
 
-@pytest.fixture(scope="session")
-def live_app_config():
-    tmp = Path(tempfile.mkdtemp(prefix="regression-kit-")) / "app.db"
-    seed_database(f"sqlite:///{tmp}")  # one row per UI state, fictional data only
+@pytest.fixture(scope="session")  # must be session-scoped, see below
+def live_app_config(tmp_path_factory):
+    db = tmp_path_factory.mktemp("regression-kit") / "app.db"
+    seed_database(f"sqlite:///{db}")  # one row per UI state, fictional data only
     return LiveAppConfig(
         command=["uv", "run", "uvicorn", "app.main:app", "--port", "{port}"],
         ready_path="/docs",
-        env={"DATABASE_URL": f"sqlite:///{tmp}"},
+        env={"DATABASE_URL": f"sqlite:///{db}"},
+        inherit_env=False,  # the app sees only what is set here, never your shell
     )
 
 
@@ -70,6 +68,12 @@ def test_dashboard_lists_seeded_rows(live_app, page):  # ``page`` is pytest-play
 
 Run the browser tests with `uv run pytest -m functional`; run everything else
 with `-m "not functional"`.
+
+`live_app_config` **must be session-scoped**: `live_app` is a session fixture,
+and pytest refuses to let a session fixture depend on a function-scoped one
+(`ScopeMismatch: You tried to access the function scoped fixture
+live_app_config with a session scoped request object`). The example uses
+`tmp_path_factory` rather than `tmp_path` for the same reason.
 
 ### `LiveAppConfig`
 

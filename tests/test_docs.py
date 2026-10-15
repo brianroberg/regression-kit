@@ -15,3 +15,14 @@ def test_ci_job_installs_chromium_through_the_python_package() -> None:
     assert "uv run playwright install --with-deps chromium" in CI_JOB
     assert "npx playwright install" not in CI_JOB
     assert "npx playwright install" not in README
+
+
+def test_readme_example_uses_pytests_own_temp_factory() -> None:
+    # tmp_path_factory is session-usable, cleaned up by pytest, and shows the
+    # fixture must be session-scoped; tempfile.mkdtemp leaks a directory per run.
+    assert "tmp_path_factory.mktemp(" in README
+    assert "tempfile.mkdtemp" not in README
+
+
+def test_readme_says_live_app_config_must_be_session_scoped() -> None:
+    assert "ScopeMismatch" in README
