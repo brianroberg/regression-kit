@@ -16,7 +16,9 @@ fixture that each project otherwise grows on its own. The plugin provides:
 
 Runtime dependency: `pytest>=8` only. Python 3.11+. Browser tests additionally
 need `pytest-playwright` and a Chromium install, which this plugin does not
-install.
+install. **The `live_app` fixture is POSIX-only** (Linux, macOS): it relies on
+process groups and POSIX signals to tear the app down. The marker and browser
+guard work anywhere.
 
 ## Install
 
@@ -101,8 +103,10 @@ option `regression_kit_marker`). At collection time the plugin checks whether a
 browser is available: the `playwright` package must be importable **and** a
 directory starting with `chromium` holding Playwright's `INSTALLATION_COMPLETE`
 marker (a directory without it is an interrupted download) must exist under
-`PLAYWRIGHT_BROWSERS_PATH` (if set), else `~/.cache/ms-playwright` on Linux or
-`~/Library/Caches/ms-playwright` on macOS.
+`PLAYWRIGHT_BROWSERS_PATH` (if set; the special value `0` means inside the
+`playwright` package, as Playwright documents), else `~/.cache/ms-playwright`
+on Linux, `~/Library/Caches/ms-playwright` on macOS or
+`%LOCALAPPDATA%\ms-playwright` on Windows.
 
 | browser available | default | `--require-browser` or `REGRESSION_KIT_REQUIRE_BROWSER=1` |
 |---|---|---|

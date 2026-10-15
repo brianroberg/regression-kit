@@ -115,12 +115,26 @@ def is_ready(url: str, statuses: Collection[int], timeout: float) -> bool:
     return status in statuses
 
 
-def _browsers_dir() -> Path:
+def _package_dir(spec: object) -> Path:
+    locations = getattr(spec, "submodule_search_locations", None)
+    if locations:
+        return Path(next(iter(locations)))
+    return Path(str(getattr(spec, "origin", ""))).parent
+
+
+def _browsers_dir(spec: object) -> Path:
+    """Where Playwright keeps its browsers, mirroring its own registry lookup."""
     override = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if override == "0":  # "inside the package", Playwright's documented special value
+        return _package_dir(spec) / "driver" / "package" / ".local-browsers"
     if override:
         return Path(override)
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Caches" / "ms-playwright"
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA")
+        base = Path(local) if local else Path.home() / "AppData" / "Local"
+        return base / "ms-playwright"
     return Path.home() / ".cache" / "ms-playwright"
 
 
@@ -132,9 +146,10 @@ def browser_available() -> tuple[bool, str]:
     when it holds Playwright's ``INSTALLATION_COMPLETE`` marker; an interrupted
     download leaves the directory without it and Playwright refuses to launch.
     """
-    if find_spec("playwright") is None:
+    spec = find_spec("playwright")
+    if spec is None:
         return False, "playwright is not installed (pip/uv add pytest-playwright)"
-    browsers = _browsers_dir()
+    browsers = _browsers_dir(spec)
     incomplete: list[Path] = []
     if browsers.is_dir():
         for entry in sorted(browsers.iterdir()):

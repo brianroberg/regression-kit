@@ -274,3 +274,40 @@ def test_browser_available_uses_platform_default_cache(monkeypatch, tmp_path) ->
     ok, reason = browser_available()
     assert ok is False
     assert "Library/Caches/ms-playwright" in reason
+
+
+def test_browser_available_browsers_path_zero_looks_inside_the_package(
+    monkeypatch, tmp_path
+) -> None:
+    # PLAYWRIGHT_BROWSERS_PATH=0 tells Playwright to keep browsers inside its own
+    # package, at <playwright>/driver/package/.local-browsers.
+    package = tmp_path / "site-packages" / "playwright"
+    package.mkdir(parents=True)
+
+    class FakeSpec:
+        submodule_search_locations = [str(package)]
+        origin = str(package / "__init__.py")
+
+    monkeypatch.setattr("regression_kit._core.find_spec", lambda name: FakeSpec())
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", "0")
+    ok, reason = browser_available()
+    assert ok is False
+    assert ".local-browsers" in reason
+    _install_chromium(package / "driver" / "package" / ".local-browsers")
+    ok, reason = browser_available()
+    assert ok is True
+    assert str(package / "driver" / "package" / ".local-browsers" / "chromium-1187") in reason
+
+
+def test_browser_available_uses_localappdata_on_windows(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("regression_kit._core.find_spec", lambda name: object())
+    monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
+    monkeypatch.setattr("regression_kit._core.sys.platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
+    monkeypatch.setattr("regression_kit._core.Path.home", classmethod(lambda cls: tmp_path))
+    ok, reason = browser_available()
+    assert ok is False
+    assert str(tmp_path / "Local" / "ms-playwright") in reason
+    _install_chromium(tmp_path / "Local" / "ms-playwright")
+    ok, _ = browser_available()
+    assert ok is True

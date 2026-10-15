@@ -201,11 +201,10 @@ def start_live_app(config: LiveAppConfig) -> LiveApp:
 
 
 def _signal_group(process: subprocess.Popen[str], sig: signal.Signals) -> None:
+    # POSIX only: the app was started in its own session, so its whole process
+    # group (workers, reloaders) gets the signal, not just the launcher.
     try:
-        if hasattr(os, "killpg"):
-            os.killpg(os.getpgid(process.pid), sig)
-        else:  # pragma: no cover - Windows
-            process.send_signal(sig)
+        os.killpg(os.getpgid(process.pid), sig)
     except ProcessLookupError:
         pass
 
