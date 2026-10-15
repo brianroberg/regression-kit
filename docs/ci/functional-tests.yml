@@ -40,7 +40,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: uv run playwright install --with-deps chromium
 
       - name: Run functional tests
         run: uv run pytest -m functional --require-browser

@@ -16,7 +16,10 @@ fixture that each project otherwise grows on its own. The plugin provides:
 
 Runtime dependency: `pytest>=8` only. Python 3.11+. Browser tests additionally
 need `pytest-playwright` and a Chromium install, which this plugin does not
-install. **The `live_app` fixture is POSIX-only** (Linux, macOS): it relies on
+install: run `uv run playwright install --with-deps chromium` (the Python
+package's own browser revision — installing through the npm CLI instead fetches npm's
+revision, which is usually a different one, so the guard would find a browser
+directory and the launch would still fail). **The `live_app` fixture is POSIX-only** (Linux, macOS): it relies on
 process groups and POSIX signals to tear the app down. The marker and browser
 guard work anywhere.
 
