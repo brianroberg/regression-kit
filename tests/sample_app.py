@@ -3,8 +3,10 @@
 Usage: ``python sample_app.py [PORT]``. With no PORT argument it uses the ``PORT``
 environment variable, and with neither it binds an ephemeral port; it always
 prints ``Serving on http://127.0.0.1:PORT`` so the plugin can parse it.
-``/`` and ``/health`` answer 200; ``/env/NAME`` answers 200 with the value of the
-environment variable NAME (404 if unset); anything else 404.
+``/`` and ``/health`` answer 200 with ``ok``; ``/page`` answers 200 with a small
+HTML page whose button writes ``clicked`` into ``#result`` from JavaScript (so only
+a real browser ever sees that text); ``/env/NAME`` answers 200 with the value of
+the environment variable NAME (404 if unset); anything else 404.
 
 Teardown modes, each selected by an environment variable set to ``1``:
 
@@ -24,10 +26,27 @@ import subprocess
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+PAGE = b"""<!doctype html>
+<html><head><meta charset="utf-8"><title>regression-kit sample</title></head>
+<body>
+<h1>regression-kit sample app</h1>
+<button id="clicker">click me</button>
+<p id="result">not clicked</p>
+<script>
+document.getElementById("clicker").addEventListener("click", function () {
+  document.getElementById("result").textContent = "clicked";
+});
+</script>
+</body></html>
+"""
+
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - http.server API
-        if self.path.startswith("/env/"):
+        content_type = "text/plain"
+        if self.path == "/page":
+            status, body, content_type = 200, PAGE, "text/html; charset=utf-8"
+        elif self.path.startswith("/env/"):
             value = os.environ.get(self.path[len("/env/") :])
             status = 200 if value is not None else 404
             body = value.encode() if value is not None else b"unset"
@@ -35,6 +54,7 @@ class Handler(BaseHTTPRequestHandler):
             status = 200 if self.path in ("/", "/health") else 404
             body = b"ok" if status == 200 else b"missing"
         self.send_response(status)
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
