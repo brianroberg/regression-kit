@@ -10,6 +10,7 @@ import os
 import pytest
 
 from regression_kit._core import browser_available
+from regression_kit._live import LiveAppConfig, start_live_app, stop_live_app
 
 REQUIRE_BROWSER_ENV = "REGRESSION_KIT_REQUIRE_BROWSER"
 _REQUIRED_FAIL = pytest.StashKey[str]()
@@ -72,3 +73,34 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
     message = item.stash.get(_REQUIRED_FAIL, None)
     if message is not None:
         pytest.fail(f"{message} (--require-browser or {REQUIRE_BROWSER_ENV}=1 is set)")
+
+
+@pytest.fixture(scope="session")
+def live_app(request: pytest.FixtureRequest):
+    """The app under test, started from the user's ``live_app_config`` fixture.
+
+    Session-scoped: one server per test session. Define a session-scoped
+    ``live_app_config`` fixture (normally in conftest.py) returning a
+    :class:`regression_kit.LiveAppConfig`.
+    """
+    try:
+        config = request.getfixturevalue("live_app_config")
+    except pytest.FixtureLookupError:
+        pytest.fail(
+            "regression-kit: the live_app fixture needs a session-scoped fixture named "
+            "'live_app_config' that returns a regression_kit.LiveAppConfig. Define it in "
+            "your conftest.py.",
+            pytrace=False,
+        )
+    if not isinstance(config, LiveAppConfig):
+        pytest.fail(
+            "regression-kit: the live_app_config fixture must return a "
+            f"regression_kit.LiveAppConfig, not {type(config).__name__}.",
+            pytrace=False,
+        )
+    __tracebackhide__ = True
+    app = start_live_app(config)  # raises LiveAppStartupError with the output tail
+    try:
+        yield app
+    finally:
+        stop_live_app(app)

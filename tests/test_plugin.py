@@ -108,3 +108,94 @@ def test_deselecting_marker_still_works(pytester: pytest.Pytester, no_browser) -
     pytester.makepyfile(MARKED_TEST)
     result = pytester.runpytest("-m", "not functional")
     result.assert_outcomes(passed=1, deselected=1)
+
+
+# --- live_app failure paths -------------------------------------------------
+
+
+def _config_conftest(command: str, *args: str, **kwargs: object) -> str:
+    """A conftest whose live_app_config runs ``python -c <command> <args...>``."""
+    argv = "".join(f", {arg!r}" for arg in args)
+    extras = "".join(f", {key}={value!r}" for key, value in kwargs.items())
+    return f"""
+import sys
+import pytest
+from regression_kit import LiveAppConfig
+
+@pytest.fixture(scope="session")
+def live_app_config():
+    return LiveAppConfig(command=[sys.executable, "-c", {command!r}{argv}]{extras})
+"""
+
+
+USES_LIVE_APP = """
+def test_uses_live_app(live_app):
+    assert live_app.port
+"""
+
+
+def test_live_app_without_config_names_the_missing_fixture(pytester: pytest.Pytester) -> None:
+    pytester.makepyfile(USES_LIVE_APP)
+    result = pytester.runpytest()
+    result.assert_outcomes(errors=1)
+    result.stdout.fnmatch_lines(["*live_app_config*LiveAppConfig*"])
+
+
+def test_live_app_config_of_wrong_type_is_rejected(pytester: pytest.Pytester) -> None:
+    pytester.makeconftest(
+        """
+        import pytest
+
+        @pytest.fixture(scope="session")
+        def live_app_config():
+            return {"command": ["x"]}
+        """
+    )
+    pytester.makepyfile(USES_LIVE_APP)
+    result = pytester.runpytest()
+    result.assert_outcomes(errors=1)
+    result.stdout.fnmatch_lines(["*live_app_config*must return*LiveAppConfig*dict*"])
+
+
+def test_live_app_command_that_exits_early(pytester: pytest.Pytester) -> None:
+    pytester.makeconftest(
+        _config_conftest("import sys; print('boom: no database'); sys.exit(3)", startup_timeout=10)
+    )
+    pytester.makepyfile(USES_LIVE_APP)
+    result = pytester.runpytest()
+    result.assert_outcomes(errors=1)
+    result.stdout.fnmatch_lines(["*LiveAppStartupError: app exited*code 3*", "*boom: no database*"])
+
+
+def test_live_app_port_never_printed(pytester: pytest.Pytester) -> None:
+    pytester.makeconftest(
+        _config_conftest(
+            "import time; print('started but silent', flush=True); time.sleep(30)",
+            startup_timeout=1.5,
+        )
+    )
+    pytester.makepyfile(USES_LIVE_APP)
+    result = pytester.runpytest()
+    result.assert_outcomes(errors=1)
+    result.stdout.fnmatch_lines(
+        ["*LiveAppStartupError: app did not report a port*1.5*", "*started but silent*"]
+    )
+
+
+def test_live_app_readiness_timeout(pytester: pytest.Pytester) -> None:
+    # Binds the port so the plugin knows where to look, but never answers HTTP.
+    pytester.makeconftest(
+        _config_conftest(
+            "import socket, sys, time; s = socket.socket(); "
+            "s.bind(('127.0.0.1', int(sys.argv[1]))); s.listen(); "
+            "print('bound, not serving', flush=True); time.sleep(30)",
+            "{port}",
+            startup_timeout=2.0,
+        )
+    )
+    pytester.makepyfile(USES_LIVE_APP)
+    result = pytester.runpytest()
+    result.assert_outcomes(errors=1)
+    result.stdout.fnmatch_lines(
+        ["*LiveAppStartupError: app did not answer*2.0*", "*bound, not serving*"]
+    )
