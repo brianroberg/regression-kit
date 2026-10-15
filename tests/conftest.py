@@ -38,3 +38,22 @@ def http_server():
     finally:
         server.shutdown()
         server.server_close()
+
+
+@pytest.fixture
+def pytester(pytester):
+    """pytester with the pytest-playwright plugin disabled in the INNER run.
+
+    pytest-playwright (0.10) wraps every ``pytest_runtest_call`` in Playwright's
+    soft-assertion scope, which cannot nest: an in-process ``runpytest`` inside a
+    test fails every inner test with "nested soft assertion scopes are not
+    supported". The inner runs here test regression-kit, never Playwright, so
+    the plugin is dropped from them. Only the kit's own functional tests use it.
+    """
+    inprocess = pytester.runpytest_inprocess
+
+    def runpytest_inprocess(*args, **kwargs):
+        return inprocess("-p", "no:playwright", *args, **kwargs)
+
+    pytester.runpytest_inprocess = runpytest_inprocess
+    return pytester

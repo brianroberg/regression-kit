@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
@@ -319,3 +320,15 @@ def test_browser_available_uses_localappdata_on_windows(monkeypatch, tmp_path) -
     _install_chromium(tmp_path / "Local" / "ms-playwright")
     ok, _ = browser_available()
     assert ok is True
+
+
+def test_browser_available_is_not_fooled_by_an_importable_playwright(monkeypatch, tmp_path) -> None:
+    # pytest-playwright is a dev dependency of this repo, so ``playwright`` IS
+    # importable here. The guard must still answer "no" until a completed
+    # Chromium install exists: importability alone is not a browser.
+    assert find_spec("playwright") is not None, "pytest-playwright should be installed"
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+    ok, reason = browser_available()
+    assert ok is False
+    assert "no chromium install" in reason
+    assert "not installed" not in reason  # the honest reason: browser, not package

@@ -10,7 +10,13 @@ dependencies = ["pytest>=8"]
 regression_kit = "regression_kit.plugin"
 
 [dependency-groups]
-dev = ["pytest>=8", "hypothesis", "pytest-xdist", "ruff"]
+dev = [
+    "pytest>=8",
+    "hypothesis",
+    "pytest-xdist",
+    "ruff",
+    "pytest-playwright>=0.10.0",
+]
 
 [build-system]
 requires = ["hatchling"]
