@@ -18,6 +18,7 @@ from importlib.util import find_spec
 from pathlib import Path
 
 PORT_TOKEN = "{port}"
+INSTALL_MARKER = "INSTALLATION_COMPLETE"
 
 # Matches the startup lines of uvicorn ("Uvicorn running on http://127.0.0.1:8000"),
 # Flask ("Running on http://127.0.0.1:5000"), gunicorn ("Listening at: http://127.0.0.1:8000")
@@ -127,13 +128,23 @@ def browser_available() -> tuple[bool, str]:
     """Report whether Playwright and a Chromium install are both present.
 
     Returns ``(ok, reason)``. The reason names what is missing, or the
-    Chromium directory that was found.
+    Chromium directory that was found. A ``chromium*`` directory counts only
+    when it holds Playwright's ``INSTALLATION_COMPLETE`` marker; an interrupted
+    download leaves the directory without it and Playwright refuses to launch.
     """
     if find_spec("playwright") is None:
         return False, "playwright is not installed (pip/uv add pytest-playwright)"
     browsers = _browsers_dir()
+    incomplete: list[Path] = []
     if browsers.is_dir():
         for entry in sorted(browsers.iterdir()):
             if entry.is_dir() and entry.name.startswith("chromium"):
-                return True, f"found {entry}"
+                if (entry / INSTALL_MARKER).is_file():
+                    return True, f"found {entry}"
+                incomplete.append(entry)
+    if incomplete:
+        return False, (
+            f"incomplete chromium install at {incomplete[0]} (no {INSTALL_MARKER} marker; "
+            "re-run: playwright install chromium)"
+        )
     return False, f"no chromium install under {browsers} (run: playwright install chromium)"

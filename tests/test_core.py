@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+from pathlib import Path
 
 import pytest
 from hypothesis import given
@@ -233,13 +234,32 @@ def test_browser_available_false_without_chromium(monkeypatch, tmp_path) -> None
     assert "chromium" in reason and str(tmp_path) in reason
 
 
-def test_browser_available_true_with_chromium_dir(monkeypatch, tmp_path) -> None:
+def _install_chromium(browsers: Path, name: str = "chromium-1187") -> Path:
+    """Mimic a completed ``playwright install chromium``: the dir plus its marker."""
+    chromium = browsers / name
+    chromium.mkdir(parents=True)
+    (chromium / "INSTALLATION_COMPLETE").write_text("")
+    return chromium
+
+
+def test_browser_available_true_with_completed_chromium_install(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("regression_kit._core.find_spec", lambda name: object())
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+    _install_chromium(tmp_path)
+    ok, reason = browser_available()
+    assert ok is True
+    assert "chromium-1187" in reason
+
+
+def test_browser_available_false_when_install_marker_is_missing(monkeypatch, tmp_path) -> None:
+    # An interrupted ``playwright install`` leaves the directory without the
+    # INSTALLATION_COMPLETE marker; Playwright itself refuses to launch from it.
     monkeypatch.setattr("regression_kit._core.find_spec", lambda name: object())
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
     (tmp_path / "chromium-1187").mkdir()
     ok, reason = browser_available()
-    assert ok is True
-    assert "chromium-1187" in reason
+    assert ok is False
+    assert "chromium-1187" in reason and "INSTALLATION_COMPLETE" in reason
 
 
 def test_browser_available_uses_platform_default_cache(monkeypatch, tmp_path) -> None:
@@ -247,7 +267,7 @@ def test_browser_available_uses_platform_default_cache(monkeypatch, tmp_path) ->
     monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
     monkeypatch.setattr("regression_kit._core.Path.home", classmethod(lambda cls: tmp_path))
     monkeypatch.setattr("regression_kit._core.sys.platform", "linux")
-    (tmp_path / ".cache" / "ms-playwright" / "chromium_headless_shell-1187").mkdir(parents=True)
+    _install_chromium(tmp_path / ".cache" / "ms-playwright", "chromium_headless_shell-1187")
     ok, _ = browser_available()
     assert ok is True
     monkeypatch.setattr("regression_kit._core.sys.platform", "darwin")

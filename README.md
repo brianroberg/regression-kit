@@ -99,8 +99,9 @@ message naming it.
 `pytest_configure` registers the marker `functional` (rename it with the ini
 option `regression_kit_marker`). At collection time the plugin checks whether a
 browser is available: the `playwright` package must be importable **and** a
-directory starting with `chromium` must exist under `PLAYWRIGHT_BROWSERS_PATH`
-(if set), else `~/.cache/ms-playwright` on Linux or
+directory starting with `chromium` holding Playwright's `INSTALLATION_COMPLETE`
+marker (a directory without it is an interrupted download) must exist under
+`PLAYWRIGHT_BROWSERS_PATH` (if set), else `~/.cache/ms-playwright` on Linux or
 `~/Library/Caches/ms-playwright` on macOS.
 
 | browser available | default | `--require-browser` or `REGRESSION_KIT_REQUIRE_BROWSER=1` |
