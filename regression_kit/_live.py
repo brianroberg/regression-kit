@@ -53,6 +53,10 @@ class LiveAppConfig:
     port_pattern: str | None = None
     host: str = "127.0.0.1"
 
+    def __post_init__(self) -> None:
+        if isinstance(self.command, (str, bytes)):
+            raise TypeError("command must be a sequence of arguments, not a string")
+
     def uses_port_token(self) -> bool:
         return any(PORT_TOKEN in arg for arg in self.command) or any(
             PORT_TOKEN in value for value in self.env.values()
