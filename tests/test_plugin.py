@@ -199,3 +199,23 @@ def test_live_app_readiness_timeout(pytester: pytest.Pytester) -> None:
     result.stdout.fnmatch_lines(
         ["*LiveAppStartupError: app did not answer*2.0*", "*bound, not serving*"]
     )
+
+
+def test_require_browser_fails_before_fixtures_run(pytester: pytest.Pytester, no_browser) -> None:
+    pytester.makepyfile(
+        """
+        import pytest
+
+        @pytest.fixture
+        def exploding():
+            raise RuntimeError("fixture ran")
+
+        @pytest.mark.functional
+        def test_browser_thing(exploding):
+            assert True
+        """
+    )
+    result = pytester.runpytest("--require-browser")
+    result.assert_outcomes(errors=1)
+    result.stdout.fnmatch_lines(["*no chromium (fake)*"])
+    assert "fixture ran" not in result.stdout.str()

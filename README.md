@@ -1,6 +1,138 @@
 # regression-kit
 
 A pytest plugin that gives every web project the same way to run browser/e2e
-regression tests against a live, seeded, never-production copy of the app.
+regression tests against a **live, seeded, never-production** copy of the app.
 
-Work in progress — see the `build/plugin` branch.
+It replaces the hand-rolled "launch uvicorn, find the port, poll until ready"
+fixture that each project otherwise grows on its own. The plugin provides:
+
+- a session-scoped `live_app` fixture that starts your app as a subprocess,
+  discovers its port, waits until it answers HTTP, and tears it down;
+- a `functional` marker plus a browser guard: marked tests are skipped when
+  Playwright's Chromium is not installed, and **fail** instead when you pass
+  `--require-browser` (so CI can never go green because the browser was missing);
+- small pure helpers (`parse_port`, `merge_env`, `browser_available`, …) you can
+  reuse directly.
+
+Runtime dependency: `pytest>=8` only. Python 3.11+. Browser tests additionally
+need `pytest-playwright` and a Chromium install, which this plugin does not
+install.
+
+## Install
+
+```bash
+uv add --dev "regression-kit @ git+https://github.com/brianroberg/regression-kit"
+```
+
+The repository is being transferred to `brianroberg`; until the transfer lands,
+the URL is `https://github.com/brianroberg-agent/regression-kit`. The plugin
+registers itself through the `pytest11` entry point; nothing to add to `conftest.py`
+except your own `live_app_config` fixture.
+
+## Usage
+
+```python
+# tests/conftest.py
+import tempfile
+from pathlib import Path
+
+import pytest
+from regression_kit import LiveAppConfig
+
+from tests.seed import seed_database  # your project's seed function
+
+
+@pytest.fixture(scope="session")
+def live_app_config():
+    tmp = Path(tempfile.mkdtemp(prefix="regression-kit-")) / "app.db"
+    seed_database(f"sqlite:///{tmp}")  # one row per UI state, fictional data only
+    return LiveAppConfig(
+        command=["uv", "run", "uvicorn", "app.main:app", "--port", "{port}"],
+        ready_path="/docs",
+        env={"DATABASE_URL": f"sqlite:///{tmp}"},
+    )
+
+
+# tests/test_functional.py
+import pytest
+
+
+@pytest.mark.functional
+def test_dashboard_lists_seeded_rows(live_app, page):  # ``page`` is pytest-playwright's
+    page.goto(live_app.url("/dashboard"))
+    assert page.get_by_text("Avery Anderson").is_visible()
+```
+
+Run the browser tests with `uv run pytest -m functional`; run everything else
+with `-m "not functional"`.
+
+### `LiveAppConfig`
+
+| field | default | meaning |
+|---|---|---|
+| `command` | required | argv to launch the app. If it (or an `env` value) contains the literal token `{port}`, a free port is allocated and substituted; otherwise the port is **parsed from the process output**. |
+| `ready_path` | `"/"` | path polled until the app answers |
+| `ready_status` | `range(200, 500)` | any status in this collection means "up" — a 401 or 404 on `/login` still proves the server answers |
+| `env` | `{}` | merged over `os.environ`; `{port}` is substituted in values |
+| `cwd` | `None` | working directory for the process |
+| `startup_timeout` | `30.0` | seconds allowed for port discovery **and** readiness together |
+| `port_pattern` | `None` | regex with one group; the default understands uvicorn (`Uvicorn running on http://127.0.0.1:PORT`), Flask (`Running on http://127.0.0.1:PORT`), gunicorn (`Listening at: http://127.0.0.1:PORT`) and any bare `127.0.0.1:PORT` / `localhost:PORT` / `0.0.0.0:PORT` |
+| `host` | `"127.0.0.1"` | host used for the free port and the base URL |
+
+### `LiveApp` (what `live_app` yields)
+
+`base_url`, `port`, `process` (the `subprocess.Popen`), `config`, `env` (the
+environment the process was given), `url(path)` and `output_tail()` — the last
+200 lines of the server's combined stdout/stderr, which is also included in
+every `LiveAppStartupError`.
+
+Startup failures (the process exits early, never prints a port, or never answers
+`ready_path` within `startup_timeout`) raise `LiveAppStartupError` with the
+reason and the output tail. Teardown sends SIGTERM to the process group, waits
+5 s, then SIGKILL. If `live_app_config` is not defined, `live_app` fails with a
+message naming it.
+
+### Marker and browser guard
+
+`pytest_configure` registers the marker `functional` (rename it with the ini
+option `regression_kit_marker`). At collection time the plugin checks whether a
+browser is available: the `playwright` package must be importable **and** a
+directory starting with `chromium` must exist under `PLAYWRIGHT_BROWSERS_PATH`
+(if set), else `~/.cache/ms-playwright` on Linux or
+`~/Library/Caches/ms-playwright` on macOS.
+
+| browser available | default | `--require-browser` or `REGRESSION_KIT_REQUIRE_BROWSER=1` |
+|---|---|---|
+| yes | marked tests run untouched | marked tests run untouched |
+| no | marked tests are **skipped** with the reason | marked tests **error at setup** with the reason; the run is red |
+
+The failure is raised before any fixture runs, so a missing browser is reported
+as a setup ERROR naming the cause, not as a Playwright launch traceback. Tests
+without the marker are never touched.
+
+### The seed convention
+
+Each project owns one function that writes **one row per UI state** into a
+throwaway database **before** the server starts (call it from
+`live_app_config`, as above). Use fictional data only. Never point `live_app` at
+a production or shared database; the point of the fixture is that the app under
+test is a disposable copy.
+
+## What is proven where
+
+The plugin's own suite (`uv run pytest`) runs without a browser: it drives a
+stdlib HTTP server through `live_app` both ways (port token and parsed port),
+exercises every startup failure path, and tests the browser guard with
+`browser_available` monkeypatched to both outcomes. The Playwright half — that a
+marked test using `page` actually runs against `live_app` — is proven on a
+machine with Chromium or in CI (`docs/ci/functional-tests.yml`), not here.
+
+## Developing
+
+```bash
+uv sync
+uv run --no-sync pytest -q            # or: -n auto
+uv run --no-sync ruff check . && uv run --no-sync ruff format --check .
+```
+
+See `CLAUDE.md` for the working rules (TDD, no workflow pushes from the bot).
