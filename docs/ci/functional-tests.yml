@@ -1,0 +1,46 @@
+# Browser/e2e regression job for a project that uses regression-kit.
+#
+# This file lives under docs/ci/ because the bot account's token cannot push
+# anything under .github/workflows/. The repo owner copies it to
+# .github/workflows/functional-tests.yml (adjusting the Python version and the
+# test path) and commits it from a credential that has the `workflow` scope.
+#
+# --require-browser makes a missing Chromium a hard failure, so this job can
+# never pass because the browser was silently absent.
+
+name: Functional tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  functional:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync dependencies
+        run: uv sync --all-groups
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+
+      - name: Install Chromium
+        run: uv run playwright install --with-deps chromium
+
+      - name: Run functional tests
+        run: uv run pytest -m functional --require-browser

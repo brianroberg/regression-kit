@@ -1,0 +1,83 @@
+# CI for regression-kit ITSELF (not for a project that uses it; that job is
+# docs/ci/functional-tests.yml).
+#
+# This file lives under docs/ci/ because the bot account's token cannot push
+# anything under .github/workflows/. The repo owner copies it to
+# .github/workflows/kit-ci.yml and commits it from a credential that has the
+# `workflow` scope.
+#
+# Two jobs:
+#   tests    the browserless suite across Python x pytest versions, plus ruff;
+#   browser  the kit's own functional tests (tests/functional/) in real Chromium,
+#            with --require-browser so a missing browser is a red run, never a
+#            silently skipped one.
+
+name: regression-kit CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.14"]
+        # "pytest>=8,<9" is the oldest supported major; "pytest" is whatever is
+        # latest on PyPI at run time, so a pytest release that breaks the plugin
+        # shows up here before a user hits it.
+        pytest: ["pytest>=8,<9", "pytest"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Sync dependencies (locked)
+        run: uv sync --locked
+
+      - name: Select the pytest version for this cell
+        run: |
+          uv pip install --upgrade "${{ matrix.pytest }}"
+          uv run --no-sync pytest --version
+
+      - name: Lint and format check
+        if: matrix.python-version == '3.12' && matrix.pytest == 'pytest'
+        run: |
+          uv run --no-sync ruff check .
+          uv run --no-sync ruff format --check .
+
+      - name: Run the suite (no browser)
+        run: uv run --no-sync pytest -q -m "not functional"
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Sync dependencies (locked)
+        run: uv sync --locked
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+
+      - name: Install Chromium (the Python package's own revision)
+        run: uv run playwright install --with-deps chromium
+
+      - name: Run the functional tests in a real browser
+        run: uv run --no-sync pytest -q -m functional --require-browser
