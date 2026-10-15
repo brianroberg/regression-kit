@@ -145,9 +145,12 @@ in `env`.
 ## What is proven where
 
 The plugin's own suite (`uv run pytest`) runs without a browser: it drives a
-stdlib HTTP server through `live_app` both ways (port token and parsed port),
-exercises every startup failure path, and tests the browser guard with
-`browser_available` monkeypatched to both outcomes. The Playwright half — that a
+stdlib HTTP server through `live_app` three ways (port token in the command,
+token only in an `env` value, and parsed port), exercises every startup failure
+path, pins the teardown claims (SIGKILL after a server ignores SIGTERM, the
+in-group child dies with it, a grandchild holding the pipe cannot hang the
+session), and tests the browser guard with `browser_available` monkeypatched
+to both outcomes. The Playwright half — that a
 marked test using `page` actually runs against `live_app` — is proven on a
 machine with Chromium or in CI (`docs/ci/functional-tests.yml`), not here.
 
