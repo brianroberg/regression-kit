@@ -209,6 +209,14 @@ def test_is_ready_false_when_the_listener_does_not_speak_http() -> None:
         listener.close()
 
 
+def test_is_ready_compares_the_first_status_and_does_not_follow_redirects(http_server) -> None:
+    # /redirect answers 302 -> /missing (404). A redirect is already an answer, and
+    # following it could leave the app under test (e.g. a login redirect to SSO).
+    url, _ = http_server
+    assert is_ready(f"{url}/redirect", {302}, timeout=1.0) is True
+    assert is_ready(f"{url}/redirect", {404}, timeout=1.0) is False
+
+
 def test_is_ready_false_when_status_not_accepted(http_server) -> None:
     url, _ = http_server
     assert is_ready(f"{url}/missing", {200}, timeout=1.0) is False

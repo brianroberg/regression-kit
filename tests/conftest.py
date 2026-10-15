@@ -10,6 +10,12 @@ import pytest
 
 class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - http.server API
+        if self.path == "/redirect":
+            self.send_response(302)
+            self.send_header("Location", "/missing")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         status = 200 if self.path in ("/", "/health") else 404
         self.send_response(status)
         self.send_header("Content-Length", "2")

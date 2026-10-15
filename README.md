@@ -74,7 +74,7 @@ with `-m "not functional"`.
 |---|---|---|
 | `command` | required | argv to launch the app. If it (or an `env` value) contains the literal token `{port}`, a free port is allocated and substituted; otherwise the port is **parsed from the process output**. |
 | `ready_path` | `"/"` | path polled until the app answers. A port that accepts the connection but does not answer HTTP counts as not ready |
-| `ready_status` | `range(200, 500)` | any status in this collection means "up" — a 401 or 404 on `/login` still proves the server answers |
+| `ready_status` | `range(200, 500)` | any status in this collection means "up" — a 401 or 404 on `/login` still proves the server answers. The status compared is the **first** one the server returns: redirects are **not** followed, so a `/` that answers `302 → /login` is ready with the default (302 is in range) and a custom `ready_status={200}` would need `ready_path="/login"` |
 | `env` | `{}` | merged over the inherited environment (see `inherit_env`); `{port}` is substituted in values |
 | `inherit_env` | `True` | pass the parent's whole environment to the app. With `False` the app receives **only** `PATH`, `HOME`, `LANG`/`LC_*`, `TMPDIR`, `PYTHON*`, `VIRTUAL_ENV` and `UV_*` from the parent, plus `env` |
 | `cwd` | `None` | working directory for the process |

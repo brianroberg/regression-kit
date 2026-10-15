@@ -96,17 +96,28 @@ def merge_env(base: Mapping[str, str], extra: Mapping[str, str], port: int) -> d
     return merged
 
 
-def is_ready(url: str, statuses: Collection[int], timeout: float) -> bool:
-    """True if a GET on ``url`` completes with a status in ``statuses``.
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Surface a 3xx as the answer instead of following it (possibly off-host)."""
 
-    Any transport failure (refused, reset, timeout) is False, as is a listener
-    that does not speak HTTP (``http.client.HTTPException``, e.g. BadStatusLine).
-    An HTTP error status is still an answer, so 401/404 count when they are in
-    ``statuses``.
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def is_ready(url: str, statuses: Collection[int], timeout: float) -> bool:
+    """True if a GET on ``url`` answers with a status in ``statuses``.
+
+    The status compared is the FIRST one the server returns; redirects are not
+    followed, so a 302 on ``/`` is an answer in its own right. Any transport
+    failure (refused, reset, timeout) is False, as is a listener that does not
+    speak HTTP (``http.client.HTTPException``, e.g. BadStatusLine). An HTTP error
+    status is still an answer, so 401/404 count when they are in ``statuses``.
     """
     request = urllib.request.Request(url, method="GET")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _OPENER.open(request, timeout=timeout) as response:
             status = response.status
     except urllib.error.HTTPError as exc:
         status = exc.code
