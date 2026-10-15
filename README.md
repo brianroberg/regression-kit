@@ -150,9 +150,28 @@ token only in an `env` value, and parsed port), exercises every startup failure
 path, pins the teardown claims (SIGKILL after a server ignores SIGTERM, the
 in-group child dies with it, a grandchild holding the pipe cannot hang the
 session), and tests the browser guard with `browser_available` monkeypatched
-to both outcomes. The Playwright half — that a
-marked test using `page` actually runs against `live_app` — is proven on a
-machine with Chromium or in CI (`docs/ci/functional-tests.yml`), not here.
+to both outcomes — and, with `pytest-playwright` installed as a dev dependency,
+that an importable `playwright` package alone does not make the guard say yes.
+
+The Playwright half — that a marked test using `page` actually runs against
+`live_app` — lives in `tests/functional/test_browser.py`: three functional
+tests against the sample app, one of which clicks a button and asserts the text
+its JavaScript wrote, which no plain HTTP client can see. On a machine without
+Chromium (such as the one this was developed on) they are **skipped by the
+kit's own guard**; they run for real in the kit's CI `browser` job
+(`docs/ci/kit-ci.yml`) once the repo owner installs that workflow. Until that
+job has run green, the browser path is written and guarded but not yet proven.
+
+### The two CI files
+
+| file | for whom | what it runs |
+|---|---|---|
+| `docs/ci/kit-ci.yml` | **this repository** | `tests`: the browserless suite over Python 3.11/3.12/3.14 × `pytest>=8,<9`/latest, plus ruff; `browser`: `tests/functional/` in real Chromium with `--require-browser` |
+| `docs/ci/functional-tests.yml` | **a project that uses the kit** | that project's own `-m functional` tests with `--require-browser`; copy it and adjust the Python version and test path |
+
+Both live under `docs/ci/` because the bot account that writes this repo cannot
+push to `.github/workflows/`; the owner copies them in from a credential with
+the `workflow` scope.
 
 ## Developing
 
@@ -160,6 +179,12 @@ machine with Chromium or in CI (`docs/ci/functional-tests.yml`), not here.
 uv sync
 uv run --no-sync pytest -q            # or: -n auto
 uv run --no-sync ruff check . && uv run --no-sync ruff format --check .
+uv run playwright install --with-deps chromium   # optional: makes tests/functional/ run for real
 ```
+
+The pytester-based tests pass `-p no:playwright` to their inner runs
+(`tests/conftest.py`): pytest-playwright wraps every test call in a
+soft-assertion scope that cannot nest, so an in-process inner pytest would
+otherwise fail every test with "nested soft assertion scopes are not supported".
 
 See `CLAUDE.md` for the working rules (TDD, no workflow pushes from the bot).

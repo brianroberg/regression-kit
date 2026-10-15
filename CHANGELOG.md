@@ -41,3 +41,19 @@ Changes from the adversarial review of the first build (same unreleased version)
   `live_app_config` is stated (M9, M10).
 - Tests pin the SIGKILL fallback, the process-group kill and the `{port}`
   token appearing only in an `env` value.
+
+Added after the review round (same unreleased version):
+
+- The kit's own browser tests, `tests/functional/test_browser.py`: three
+  `functional` tests driving `tests/sample_app.py` through `live_app` with
+  pytest-playwright's `page`, including a click whose effect only a browser that
+  ran the page's JavaScript can observe. Skipped by the guard where Chromium is
+  absent; run for real by the CI `browser` job.
+- `docs/ci/kit-ci.yml`: CI for the kit itself — a Python 3.11/3.12/3.14 ×
+  `pytest>=8,<9`/latest matrix for the browserless suite plus ruff, and a
+  `browser` job that installs Chromium and runs `-m functional
+  --require-browser`. `docs/ci/functional-tests.yml` remains the job for a
+  project that uses the kit.
+- `pytest-playwright` as a dev dependency; a test pins that its importability
+  alone does not satisfy the browser guard.
+- The sample app serves `/page` (a button whose click writes text from JS).
