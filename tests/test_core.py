@@ -184,6 +184,30 @@ def test_is_ready_true_for_an_accepted_status(http_server) -> None:
     assert is_ready(f"{url}/missing", range(200, 500), timeout=1.0) is True
 
 
+def test_is_ready_false_when_the_listener_does_not_speak_http() -> None:
+    # A bound port that answers with garbage (e.g. a database or a half-started
+    # server) raises http.client.BadStatusLine; that is "not ready", not a crash.
+    import threading
+
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+    port = listener.getsockname()[1]
+
+    def serve_garbage() -> None:
+        conn, _ = listener.accept()
+        with conn:
+            conn.recv(1024)
+            conn.sendall(b"NOT HTTP AT ALL\r\n\r\n")
+
+    thread = threading.Thread(target=serve_garbage, daemon=True)
+    thread.start()
+    try:
+        assert is_ready(f"http://127.0.0.1:{port}/", range(200, 500), timeout=2.0) is False
+    finally:
+        listener.close()
+
+
 def test_is_ready_false_when_status_not_accepted(http_server) -> None:
     url, _ = http_server
     assert is_ready(f"{url}/missing", {200}, timeout=1.0) is False

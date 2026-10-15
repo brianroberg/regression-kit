@@ -6,6 +6,7 @@ tested directly. ``plugin.py`` wires these into fixtures and hooks.
 
 from __future__ import annotations
 
+import http.client
 import os
 import re
 import socket
@@ -97,8 +98,10 @@ def merge_env(base: Mapping[str, str], extra: Mapping[str, str], port: int) -> d
 def is_ready(url: str, statuses: Collection[int], timeout: float) -> bool:
     """True if a GET on ``url`` completes with a status in ``statuses``.
 
-    Any transport failure (refused, reset, timeout) is False. An HTTP error
-    status is still an answer, so 401/404 count when they are in ``statuses``.
+    Any transport failure (refused, reset, timeout) is False, as is a listener
+    that does not speak HTTP (``http.client.HTTPException``, e.g. BadStatusLine).
+    An HTTP error status is still an answer, so 401/404 count when they are in
+    ``statuses``.
     """
     request = urllib.request.Request(url, method="GET")
     try:
@@ -106,7 +109,7 @@ def is_ready(url: str, statuses: Collection[int], timeout: float) -> bool:
             status = response.status
     except urllib.error.HTTPError as exc:
         status = exc.code
-    except (OSError, ValueError):
+    except (OSError, ValueError, http.client.HTTPException):
         return False
     return status in statuses
 

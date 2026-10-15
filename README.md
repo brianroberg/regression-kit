@@ -71,13 +71,13 @@ with `-m "not functional"`.
 | field | default | meaning |
 |---|---|---|
 | `command` | required | argv to launch the app. If it (or an `env` value) contains the literal token `{port}`, a free port is allocated and substituted; otherwise the port is **parsed from the process output**. |
-| `ready_path` | `"/"` | path polled until the app answers |
+| `ready_path` | `"/"` | path polled until the app answers. A port that accepts the connection but does not answer HTTP counts as not ready |
 | `ready_status` | `range(200, 500)` | any status in this collection means "up" — a 401 or 404 on `/login` still proves the server answers |
 | `env` | `{}` | merged over the inherited environment (see `inherit_env`); `{port}` is substituted in values |
 | `inherit_env` | `True` | pass the parent's whole environment to the app. With `False` the app receives **only** `PATH`, `HOME`, `LANG`/`LC_*`, `TMPDIR`, `PYTHON*`, `VIRTUAL_ENV` and `UV_*` from the parent, plus `env` |
 | `cwd` | `None` | working directory for the process |
 | `startup_timeout` | `30.0` | seconds allowed for port discovery **and** readiness together |
-| `port_pattern` | `None` | regex with one group; the default understands uvicorn (`Uvicorn running on http://127.0.0.1:PORT`), Flask (`Running on http://127.0.0.1:PORT`), gunicorn (`Listening at: http://127.0.0.1:PORT`) and any bare `127.0.0.1:PORT` / `localhost:PORT` / `0.0.0.0:PORT` |
+| `port_pattern` | `None` | regex with one group; the default understands uvicorn (`Uvicorn running on http://127.0.0.1:PORT`), Flask (`Running on http://127.0.0.1:PORT`), gunicorn (`Listening at: http://127.0.0.1:PORT`) and any bare `127.0.0.1:PORT` / `localhost:PORT` / `0.0.0.0:PORT`. The **first** matching output line wins, so an app that logs some other local port first (a database, a debugger, a metrics endpoint) needs a `port_pattern` that matches only its HTTP listener |
 | `host` | `"127.0.0.1"` | host used for the free port and the base URL |
 
 ### `LiveApp` (what `live_app` yields)
