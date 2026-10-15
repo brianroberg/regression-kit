@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
+import re
+import signal
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -62,8 +66,6 @@ def _run(pytester: pytest.Pytester, command: list[str], env: dict[str, str]) -> 
     pytester.makepyfile(TEST_FILE)
     result = pytester.runpytest("-p", "no:cacheprovider")
     result.assert_outcomes(passed=2)
-    import json
-
     return json.loads((pytester.path / "state.json").read_text())
 
 
@@ -146,3 +148,64 @@ def test_inherit_env_false_passes_only_the_allowlist_and_config_env(pytester, mo
     pytester.makeconftest(ENV_CONFTEST.format(app=str(SAMPLE_APP), inherit=False))
     pytester.makepyfile(ENV_TEST % None)
     pytester.runpytest("-p", "no:cacheprovider").assert_outcomes(passed=1)
+
+
+HOLD_PIPE_CONFTEST = """
+import sys
+import pytest
+from regression_kit import LiveAppConfig
+
+@pytest.fixture(scope="session")
+def live_app_config():
+    return LiveAppConfig(
+        command=[sys.executable, {app!r}, "{{port}}"],
+        ready_path="/health",
+        env={{"SAMPLE_APP_HOLD_PIPE": "1"}},
+        startup_timeout=20,
+    )
+"""
+
+HOLD_PIPE_TEST = """
+import json
+import re
+import time
+
+def test_records_holder(live_app):
+    match = re.search(r"holder pid (\\d+)", live_app.output_tail())
+    assert match, live_app.output_tail()
+    with open("state.json", "w") as fh:
+        json.dump({"holder": int(match.group(1)), "test_done_at": time.time()}, fh)
+"""
+
+
+def test_teardown_does_not_hang_when_a_grandchild_holds_the_pipe(pytester) -> None:
+    # The server spawns ``sleep 600`` in a NEW session (outside the group the
+    # fixture signals) with the output pipe inherited. After the server is gone
+    # the reader thread stays blocked in read(); teardown must still finish, and
+    # the session must end, within the 5 s join grace plus a little.
+    pytester.makeconftest(HOLD_PIPE_CONFTEST.format(app=str(SAMPLE_APP)))
+    pytester.makepyfile(HOLD_PIPE_TEST)
+    holder: int | None = None
+    try:
+        result = pytester.runpytest_subprocess("-p", "no:cacheprovider", timeout=60)
+        finished_at = time.time()
+        state = json.loads((pytester.path / "state.json").read_text())
+        holder = state["holder"]
+        result.assert_outcomes(passed=1, warnings=1)
+        assert finished_at - state["test_done_at"] < 10, "teardown took too long"
+        result.stdout.fnmatch_lines(["*still holding the server's output pipe*"])
+        assert _pid_alive(holder), "the holder should have outlived the fixture"
+    finally:
+        if holder is None:
+            text = (
+                (pytester.path / "state.json").read_text()
+                if (pytester.path / "state.json").exists()
+                else ""
+            )
+            found = re.search(r'"holder": (\d+)', text)
+            holder = int(found.group(1)) if found else None
+        if holder is not None:
+            try:
+                os.kill(holder, signal.SIGKILL)
+            except ProcessLookupError:
+                pass

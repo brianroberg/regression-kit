@@ -93,8 +93,11 @@ so a failing assertion that prints the fixture does not print your secrets.
 Startup failures (the process exits early, never prints a port, or never answers
 `ready_path` within `startup_timeout`) raise `LiveAppStartupError` with the
 reason and the output tail. Teardown sends SIGTERM to the process group, waits
-5 s, then SIGKILL. If `live_app_config` is not defined, `live_app` fails with a
-message naming it.
+5 s, then SIGKILL. If a process **outside** that group (one the app started in
+its own session) still holds the app's output pipe, teardown does not wait for
+it: after a further 5 s it leaves the reader thread behind and emits a
+`RuntimeWarning` naming the leak, so the session still ends. If
+`live_app_config` is not defined, `live_app` fails with a message naming it.
 
 ### Marker and browser guard
 

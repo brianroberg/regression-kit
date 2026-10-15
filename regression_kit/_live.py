@@ -7,6 +7,7 @@ import signal
 import subprocess
 import threading
 import time
+import warnings
 from collections import deque
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -102,6 +103,9 @@ class _OutputReader:
 
     def join(self, timeout: float) -> None:
         self._thread.join(timeout)
+
+    def is_alive(self) -> bool:
+        return self._thread.is_alive()
 
 
 @dataclass
@@ -210,7 +214,13 @@ def _signal_group(process: subprocess.Popen[str], sig: signal.Signals) -> None:
 
 
 def _stop(process: subprocess.Popen[str], reader: _OutputReader) -> None:
-    """SIGTERM the process group, wait up to 5 s, then SIGKILL it."""
+    """SIGTERM the process group, wait up to 5 s, then SIGKILL it.
+
+    The output pipe is closed only once the reader thread has seen EOF. If a
+    grandchild outside the process group still holds the pipe's write end, the
+    reader stays blocked in read() and closing the stream underneath it would
+    block forever; the daemon thread is left behind and a warning is issued.
+    """
     if process.poll() is None:
         _signal_group(process, signal.SIGTERM)
         try:
@@ -219,7 +229,15 @@ def _stop(process: subprocess.Popen[str], reader: _OutputReader) -> None:
             _signal_group(process, signal.SIGKILL)
             process.wait()
     reader.join(timeout=_TERMINATE_GRACE)
-    if process.stdout is not None:
+    if reader.is_alive():
+        warnings.warn(
+            "regression-kit: a child process is still holding the server's output pipe "
+            f"after the app (pid {process.pid}) exited; the output reader thread was left "
+            "running and the pipe left open. Make the app clean up the processes it spawns.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+    elif process.stdout is not None:
         process.stdout.close()
 
 
