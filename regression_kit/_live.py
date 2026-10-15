@@ -14,6 +14,7 @@ from pathlib import Path
 
 from regression_kit._core import (
     PORT_TOKEN,
+    base_env,
     free_port,
     is_ready,
     merge_env,
@@ -42,6 +43,11 @@ class LiveAppConfig:
     Flask, gunicorn and any ``127.0.0.1:PORT`` / ``localhost:PORT`` /
     ``0.0.0.0:PORT``). ``ready_path`` is polled until it answers with a status in
     ``ready_status`` or ``startup_timeout`` seconds have passed since launch.
+
+    ``env`` is overlaid on the parent's environment when ``inherit_env`` is True
+    (the default); with ``inherit_env=False`` the child receives only ``PATH``,
+    ``HOME``, ``LANG``/``LC_*``, ``TMPDIR``, ``PYTHON*``, ``VIRTUAL_ENV`` and
+    ``UV_*`` from the parent, plus ``env``.
     """
 
     command: Sequence[str]
@@ -52,6 +58,7 @@ class LiveAppConfig:
     startup_timeout: float = 30.0
     port_pattern: str | None = None
     host: str = "127.0.0.1"
+    inherit_env: bool = True
 
     def __post_init__(self) -> None:
         if isinstance(self.command, (str, bytes)):
@@ -121,7 +128,7 @@ class LiveApp:
 def _spawn(config: LiveAppConfig, port: int | None) -> tuple[subprocess.Popen[str], dict[str, str]]:
     substituted = port if port is not None else 0
     command = substitute_port(config.command, substituted)
-    env = merge_env(os.environ, config.env, substituted)
+    env = merge_env(base_env(os.environ, config.inherit_env), config.env, substituted)
     process = subprocess.Popen(
         command,
         cwd=str(config.cwd) if config.cwd is not None else None,

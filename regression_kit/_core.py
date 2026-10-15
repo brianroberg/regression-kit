@@ -58,6 +58,30 @@ def substitute_port(command: Sequence[str], port: int) -> list[str]:
     return [arg.replace(PORT_TOKEN, str(port)) for arg in command]
 
 
+# Variables a child process needs to find its interpreter, its tools and a
+# writable temp dir when the parent's environment is NOT inherited. Everything
+# else (DATABASE_URL, cloud credentials, ...) must come from ``LiveAppConfig.env``.
+_MINIMAL_ENV_KEYS = ("PATH", "HOME", "LANG", "TMPDIR", "VIRTUAL_ENV")
+_MINIMAL_ENV_PREFIXES = ("LC_", "PYTHON", "UV_")
+
+
+def base_env(parent: Mapping[str, str], inherit: bool) -> dict[str, str]:
+    """The environment the child starts from, before ``LiveAppConfig.env`` is overlaid.
+
+    With ``inherit=True`` it is a copy of ``parent``. With ``inherit=False`` only
+    ``PATH``, ``HOME``, ``LANG``, ``LC_*``, ``TMPDIR``, ``PYTHON*``, ``VIRTUAL_ENV``
+    and ``UV_*`` survive, so a ``DATABASE_URL`` sitting in the developer's shell
+    cannot silently reach the app under test.
+    """
+    if inherit:
+        return dict(parent)
+    return {
+        key: value
+        for key, value in parent.items()
+        if key in _MINIMAL_ENV_KEYS or key.startswith(_MINIMAL_ENV_PREFIXES)
+    }
+
+
 def merge_env(base: Mapping[str, str], extra: Mapping[str, str], port: int) -> dict[str, str]:
     """Overlay ``extra`` on ``base`` and substitute ``{port}`` in ``extra``'s values.
 

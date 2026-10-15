@@ -9,6 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from regression_kit._core import (
+    base_env,
     browser_available,
     free_port,
     is_ready,
@@ -99,6 +100,40 @@ def test_merge_env_extra_wins_and_base_survives(
         if key not in extra:
             assert merged[key] == value
     assert set(merged) == set(base) | set(extra)
+
+
+# --- base_env ---------------------------------------------------------------
+
+_PARENT_ENV = {
+    "PATH": "/bin",
+    "HOME": "/h",
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C",
+    "LC_TIME": "C",
+    "TMPDIR": "/t",
+    "PYTHONPATH": "/p",
+    "PYTHONUNBUFFERED": "1",
+    "VIRTUAL_ENV": "/v",
+    "UV_CACHE_DIR": "/u",
+    "DATABASE_URL": "postgres://prod/db",
+    "AWS_SECRET_ACCESS_KEY": "x",
+    "SHELL": "/bin/fish",
+}
+
+
+def test_base_env_without_inheritance_keeps_only_the_allowlist() -> None:
+    kept = base_env(_PARENT_ENV, inherit=False)
+    assert kept == {
+        key: value
+        for key, value in _PARENT_ENV.items()
+        if key not in ("DATABASE_URL", "AWS_SECRET_ACCESS_KEY", "SHELL")
+    }
+
+
+def test_base_env_with_inheritance_is_a_copy_of_the_parent() -> None:
+    kept = base_env(_PARENT_ENV, inherit=True)
+    assert kept == _PARENT_ENV
+    assert kept is not _PARENT_ENV
 
 
 # --- substitute_port --------------------------------------------------------

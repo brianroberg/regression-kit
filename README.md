@@ -73,7 +73,8 @@ with `-m "not functional"`.
 | `command` | required | argv to launch the app. If it (or an `env` value) contains the literal token `{port}`, a free port is allocated and substituted; otherwise the port is **parsed from the process output**. |
 | `ready_path` | `"/"` | path polled until the app answers |
 | `ready_status` | `range(200, 500)` | any status in this collection means "up" — a 401 or 404 on `/login` still proves the server answers |
-| `env` | `{}` | merged over `os.environ`; `{port}` is substituted in values |
+| `env` | `{}` | merged over the inherited environment (see `inherit_env`); `{port}` is substituted in values |
+| `inherit_env` | `True` | pass the parent's whole environment to the app. With `False` the app receives **only** `PATH`, `HOME`, `LANG`/`LC_*`, `TMPDIR`, `PYTHON*`, `VIRTUAL_ENV` and `UV_*` from the parent, plus `env` |
 | `cwd` | `None` | working directory for the process |
 | `startup_timeout` | `30.0` | seconds allowed for port discovery **and** readiness together |
 | `port_pattern` | `None` | regex with one group; the default understands uvicorn (`Uvicorn running on http://127.0.0.1:PORT`), Flask (`Running on http://127.0.0.1:PORT`), gunicorn (`Listening at: http://127.0.0.1:PORT`) and any bare `127.0.0.1:PORT` / `localhost:PORT` / `0.0.0.0:PORT` |
@@ -84,7 +85,8 @@ with `-m "not functional"`.
 `base_url`, `port`, `process` (the `subprocess.Popen`), `config`, `env` (the
 environment the process was given), `url(path)` and `output_tail()` — the last
 200 lines of the server's combined stdout/stderr, which is also included in
-every `LiveAppStartupError`.
+every `LiveAppStartupError`. `config` and `env` are excluded from `repr(live_app)`,
+so a failing assertion that prints the fixture does not print your secrets.
 
 Startup failures (the process exits early, never prints a port, or never answers
 `ready_path` within `startup_timeout`) raise `LiveAppStartupError` with the
@@ -117,6 +119,13 @@ throwaway database **before** the server starts (call it from
 `live_app_config`, as above). Use fictional data only. Never point `live_app` at
 a production or shared database; the point of the fixture is that the app under
 test is a disposable copy.
+
+**Set `DATABASE_URL` (or whatever your app reads) explicitly in `env`, or pass
+`inherit_env=False`.** The default inherits the developer's shell, so a
+`DATABASE_URL` exported there for day-to-day work would silently point the
+"seeded copy" at production. With `inherit_env=False` only the variables the
+interpreter and tooling need come through; everything the app needs must be
+in `env`.
 
 ## What is proven where
 

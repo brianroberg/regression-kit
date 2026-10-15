@@ -2,19 +2,26 @@
 
 Usage: ``python sample_app.py [PORT]``. With no PORT it binds an ephemeral port
 and prints ``Serving on http://127.0.0.1:PORT`` so the plugin can parse it.
-``/`` and ``/health`` answer 200; anything else 404.
+``/`` and ``/health`` answer 200; ``/env/NAME`` answers 200 with the value of the
+environment variable NAME (404 if unset); anything else 404.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - http.server API
-        status = 200 if self.path in ("/", "/health") else 404
-        body = b"ok" if status == 200 else b"missing"
+        if self.path.startswith("/env/"):
+            value = os.environ.get(self.path[len("/env/") :])
+            status = 200 if value is not None else 404
+            body = value.encode() if value is not None else b"unset"
+        else:
+            status = 200 if self.path in ("/", "/health") else 404
+            body = b"ok" if status == 200 else b"missing"
         self.send_response(status)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()

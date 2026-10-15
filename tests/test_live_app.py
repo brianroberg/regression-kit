@@ -97,3 +97,52 @@ def test_env_receives_substituted_port(pytester: pytest.Pytester) -> None:
         """
     )
     pytester.runpytest("-p", "no:cacheprovider").assert_outcomes(passed=1)
+
+
+ENV_CONFTEST = """
+import sys
+import pytest
+from regression_kit import LiveAppConfig
+
+@pytest.fixture(scope="session")
+def live_app_config():
+    return LiveAppConfig(
+        command=[sys.executable, {app!r}, "{{port}}"],
+        ready_path="/health",
+        env={{"RK_CONFIG_VAR": "from-config"}},
+        inherit_env={inherit!r},
+        startup_timeout=20,
+    )
+"""
+
+ENV_TEST = """
+import urllib.error
+import urllib.request
+
+def fetch(live_app, name):
+    try:
+        with urllib.request.urlopen(live_app.url(f"/env/{name}"), timeout=5) as resp:
+            return resp.read().decode()
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 404
+        return None
+
+def test_env(live_app):
+    assert fetch(live_app, "RK_CONFIG_VAR") == "from-config"
+    assert fetch(live_app, "PATH") is not None
+    assert fetch(live_app, "RK_PARENT_SECRET") == %r
+"""
+
+
+def test_inherit_env_true_passes_the_parent_environment(pytester, monkeypatch) -> None:
+    monkeypatch.setenv("RK_PARENT_SECRET", "from-parent")
+    pytester.makeconftest(ENV_CONFTEST.format(app=str(SAMPLE_APP), inherit=True))
+    pytester.makepyfile(ENV_TEST % "from-parent")
+    pytester.runpytest("-p", "no:cacheprovider").assert_outcomes(passed=1)
+
+
+def test_inherit_env_false_passes_only_the_allowlist_and_config_env(pytester, monkeypatch) -> None:
+    monkeypatch.setenv("RK_PARENT_SECRET", "from-parent")
+    pytester.makeconftest(ENV_CONFTEST.format(app=str(SAMPLE_APP), inherit=False))
+    pytester.makepyfile(ENV_TEST % None)
+    pytester.runpytest("-p", "no:cacheprovider").assert_outcomes(passed=1)
