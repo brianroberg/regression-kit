@@ -104,8 +104,10 @@ class LiveApp:
     base_url: str
     port: int
     process: subprocess.Popen[str]
-    config: LiveAppConfig
-    env: Mapping[str, str]
+    # Neither the config (whose ``env`` may hold secrets) nor the full process
+    # environment belongs in a failing assertion's output.
+    config: LiveAppConfig = field(repr=False)
+    env: Mapping[str, str] = field(repr=False)
     _reader: _OutputReader = field(repr=False)
 
     def url(self, path: str) -> str:
